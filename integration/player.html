@@ -1,0 +1,55 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>RTSP Streamer Integration Sample</title></head>
+<body>
+  <h1>Integration Sample Player</h1>
+  <input id="ip" value="192.168.1.100" placeholder="Camera IP" />
+  <button id="start">Connect</button>
+  <button id="stop">Disconnect</button>
+  <video id="video" autoplay muted playsinline controls style="max-width: 960px; width: 100%; background: black;"></video>
+
+  <script>
+    const apiBase = 'http://localhost:8080';
+    const video = document.getElementById('video');
+    let pc = null;
+    let current = null;
+
+    async function start() {
+      if (pc) return;
+      const ip = document.getElementById('ip').value.trim();
+      pc = new RTCPeerConnection();
+      pc.addTransceiver('video', { direction: 'recvonly' });
+      pc.ontrack = (event) => video.srcObject = event.streams[0];
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      const res = await fetch(`${apiBase}/api/stream/offer`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ip, type: offer.type, sdp: offer.sdp }),
+      });
+      const answer = await res.json();
+      await pc.setRemoteDescription({ type: answer.type, sdp: answer.sdp });
+      current = { ip, clientId: answer.clientId };
+    }
+
+    async function stop() {
+      if (!pc || !current) return;
+      try {
+        await fetch(`${apiBase}/api/stream/stop`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(current),
+        });
+      } finally {
+        pc.close();
+        pc = null;
+        current = null;
+      }
+    }
+
+    document.getElementById('start').onclick = start;
+    document.getElementById('stop').onclick = stop;
+  </script>
+</body>
+</html>
